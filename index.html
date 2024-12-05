@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>교통수단 분류기</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            text-align: center; 
+            max-width: 600px; 
+            margin: 0 auto; 
+            padding: 20px; 
+        }
+        #webcam-container { margin: 20px 0; }
+        #label-container { margin-top: 20px; }
+        #result { 
+            font-size: 24px; 
+            font-weight: bold; 
+            margin: 20px 0; 
+        }
+        #startButton {
+            font-size: 18px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚗 교통수단 분류기 🚢</h1>
+    <button id="startButton">시작하기</button>
+    <div id="webcam-container"></div>
+    <div id="label-container"></div>
+    <div id="result"></div>
+    
+    <script>
+        const URL = "https://teachablemachine.withgoogle.com/models/sgmcqb3sG/";
+        
+        let model, webcam, resultContainer;
+        let isRunning = false;
+        let lastSpokenResult = '';
+        let speaking = false; // 음성 출력 상태 확인
+        const MIN_PROBABILITY = 0.8; // 최소 확률 조건
+        const transportClasses = ['자동차', '비행기', '기차', '배'];
+
+        const startButton = document.getElementById('startButton');
+        const webcamContainer = document.getElementById('webcam-container');
+        
+        startButton.addEventListener('click', async () => {
+            if (!isRunning) {
+                startButton.textContent = '중지하기';
+                await init();
+                isRunning = true;
+                lastSpokenResult = '';
+            } else {
+                startButton.textContent = '시작하기';
+                stopWebcam();
+                isRunning = false;
+            }
+        });
+        
+        async function init() {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+            
+            model = await tmImage.load(modelURL, metadataURL);
+            
+            const flip = true;
+            webcam = new tmImage.Webcam(200, 200, flip);
+            await webcam.setup();
+            await webcam.play();
+            window.requestAnimationFrame(loop);
+            
+            webcamContainer.appendChild(webcam.canvas);
+            resultContainer = document.getElementById("result");
+        }
+        
+        function stopWebcam() {
+            if (webcam) {
+                webcam.stop();
+                webcamContainer.innerHTML = '';
+                resultContainer.textContent = '';
+                lastSpokenResult = '';
+                speaking = false;
+            }
+        }
+        
+        async function loop() {
+            if (!isRunning) return;
+            
+            webcam.update();
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+        
+        async function predict() {
+            const prediction = await model.predict(webcam.canvas);
+            
+            let maxProbability = 0;
+            let predictedClass = '';
+            
+            // 가장 높은 확률 값으로 클래스 결정
+            for (let i = 0; i < prediction.length; i++) {
+                if (prediction[i].probability > maxProbability) {
+                    maxProbability = prediction[i].probability;
+                    predictedClass = prediction[i].className;
+                }
+            }
+            
+            let currentResult = '';
+            if (maxProbability > MIN_PROBABILITY && transportClasses.includes(predictedClass)) {
+                currentResult = predictedClass;
+            } else {
+                currentResult = '교통수단이 아닙니다';
+            }
+
+            // 화면에 출력
+            resultContainer.textContent = currentResult;
+
+            // 음성 출력 조건: "교통수단이 아닙니다"는 제외
+            if (currentResult !== lastSpokenResult && !speaking && currentResult !== '교통수단이 아닙니다') {
+                lastSpokenResult = currentResult;
+                speakResult(currentResult);
+            }
+        }
+        
+        function speakResult(result) {
+            speaking = true; // 음성 출력 시작
+            setTimeout(() => { // 1초 대기
+                const utterance = new SpeechSynthesisUtterance(result);
+                utterance.lang = 'ko-KR';
+                utterance.onend = () => { 
+                    speaking = false; // 음성 출력 완료
+                };
+                window.speechSynthesis.speak(utterance);
+            }, 1000);
+        }
+    </script>
+</body>
+</html>
+
